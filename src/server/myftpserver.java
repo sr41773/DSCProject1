@@ -80,6 +80,11 @@ public class myftpserver {
         return fileList;
     }
 
+    public void getCommand(String fileName) {
+        
+    }
+
+
     //main
     public static void main(String[] args) {
         int inputPort = 8000; // default
