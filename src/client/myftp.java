@@ -32,49 +32,179 @@ public class myftp {
     }
 
     public void clientRun() {
-        clientConnect();                        //estalish connection first
+        clientConnect();
         
         try {
             BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in));        
-            String inputCommand = "";
+            String inputCommand;
             String prompt = "myftp> ";
             
-            String serverResponse;
             while(true) {
                 System.out.print(prompt);
-
-                try {
-                    inputCommand = userInput.readLine();
+                inputCommand = userInput.readLine();
+                
+                if (inputCommand == null || inputCommand.trim().isEmpty()) {
+                    continue;  // Skip empty commands
                 }
-                catch (IOException e) {
-                    e.printStackTrace();
-                }
-
-                //ADD MORE COMMANDS
-
-                if(inputCommand.equals("quit")) {
+                
+                if (inputCommand.equals("quit")) {
+                    output.println("quit");
+                    System.out.println("Quitting...");
                     break;
                 }
 
-                output.println(inputCommand);                    //command to server      
+                //splitting
+                String[] cmdParts = inputCommand.split(" ");
+                String cmd = cmdParts[0].toLowerCase();  // case checkign
 
-                //serverResponse = input.readLine();                //input from server
-                while((serverResponse = input.readLine()) != null) {                    //Handling server response    
-                    if (serverResponse.equals("-----------")) {
-                        break;
+
+                // HANDLE OTHER COMMANDS
+                try {
+                    if (cmd.equals("get")) {
+                        handleGetCommand(cmdParts);
                     }
-                    
-                    System.out.println(serverResponse);
-                    //break;       
+                    else if (cmd.equals("put")) {
+                        handlePutCommand(cmdParts);
+                    }
+                    else {  
+                        output.println(inputCommand);
+                        readServerResponses();
+                    }
+                } catch (IOException e) {
+                    System.out.println("Error processing command: " + e.getMessage());
                 }
+            }
+        } catch (IOException e) {
+            System.out.println("Error: " + e.getMessage());
+        } finally {
+            closeConnections();
+        }
+    }
 
+
+    //separate handlers needede for get and put
+    private void handleGetCommand(String[] cmdParts) throws IOException {
+        if (cmdParts.length != 2) {
+            System.out.println("Usage: get <filename>");
+            return;
+        }
+        output.println(String.join(" ", cmdParts));         //sending command to server after joining command parameters
+        String response = input.readLine();
+        
+        if (response.startsWith("SIZE")) {
+            getCommand_receiveFile(cmdParts[1]);
+        } else {
+            System.out.println(response);
+            readServerResponses();  // until END_OF_LIST
+        }
+    }
+
+    // put
+    private void handlePutCommand(String[] cmdParts) throws IOException {
+        if (cmdParts.length != 2) {
+            System.out.println("Usage: put <filename>");
+            return;
+        }
+        File file = new File(cmdParts[1]);
+        if (!file.exists()) {
+            System.out.println("Local file does not exist");
+            return;
+        }
+        output.println(String.join(" ", cmdParts));
+        String response = input.readLine();
+        if (response.equals("READY")) {
+            putCommand_sendFile(cmdParts[1]);
+            readServerResponses();
+        }
+    }
+
+//reading server responses
+    public void readServerResponses() throws IOException {
+        String response;
+        while ((response = input.readLine()) != null) {
+            if (response.equals("END_OF_LIST")) {
+                break;
+            }
+            System.out.println(response);
+        }
+    }
+
+    //end call
+    public void closeConnections() {
+        try {
+            if (clientS != null && !clientS.isClosed()) {
+                input.close();
+                output.close();
+                clientS.close();
+            }
+        } catch (IOException e) {
+            System.out.println("Error closing connections: " + e.getMessage());
+        }
+    }
+
+    //receiving files sent from the server
+    public void getCommand_receiveFile(String fileName) {
+        try {
+            String sizeResponse = input.readLine();
+            if (!sizeResponse.startsWith("SIZE")) {                     //trying to checking size
+                System.out.println("Error: Invalid size response from server");
+                return;
+            }
+            
+            long fileSize = Long.parseLong(sizeResponse.split(" ")[1]);
+            FileOutputStream fileData = null;
+
+            try {
+                fileData = new FileOutputStream(fileName);
+                byte[] buffer = new byte[4096];                     //4096
+                int fileBytes;
+                long fileBytesRead = 0;
+
+                while (fileBytesRead < fileSize && 
+                       (fileBytes = clientS.getInputStream().read(buffer, 0, 
+                           (int)Math.min(buffer.length, fileSize - fileBytesRead))) > 0) {              //condition changed
+                    fileData.write(buffer, 0, fileBytes);
+                    fileBytesRead += fileBytes;
+                }
+                
+                System.out.println("File received: " + fileName);
+                readServerResponses();  // end with END_OF_LIST marker
+            } finally {
+                if (fileData != null) {
+                    fileData.close();
+                }
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Error: Invalid file size received from server");
+        } catch (IOException e) {
+            System.out.println("Error receiving file: " + e.getMessage());
+        }
+    }
+
+    // to send files to machine
+    public void putCommand_sendFile(String fileName) {
+        FileInputStream fis = null;
+        try {
+            File file = new File(fileName);
+            fis = new FileInputStream(file);                    // new file
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            
+            while ((bytesRead = fis.read(buffer)) > 0) {
+                clientS.getOutputStream().write(buffer, 0, bytesRead);
+            }
+            
+            clientS.getOutputStream().flush();
+            readServerResponses();  // read server's confirmation
+        } catch (IOException e) {
+            System.out.println("Error sending file: " + e.getMessage());
+        } finally {
+            try {
+                if (fis != null) fis.close();
+            } catch (IOException e) {
+                System.out.println("Error closing file: " + e.getMessage());
             }
         }
-        catch (IOException e) {
-            System.out.println("Error: " + e.getMessage());
-            e.printStackTrace();
-        }
-
     }
 
     public static void main(String[] args) {
