@@ -1,39 +1,44 @@
+// Client side
 import java.io.*;
 import java.net.*;
 
-public class FTPclient {
+public class myftp {
 
     int serverPort;
     String machineName;
     Socket clientS;
 
-    public FTPclient(String machineName, int serverPort) {
+    public myftp(String machineName, int serverPort) {
         this.machineName = machineName;
         this.serverPort = serverPort;
     }
 
+    //to establish client connection
     public void clientConnect() {
         try {
             this.clientS = new Socket(machineName, serverPort);
-            BufferedReader in = new BufferedReader(new InputStreamReader(clientS.getInputStream()));
+            BufferedReader input = new BufferedReader(new InputStreamReader(clientS.getInputStream()));
 
             System.out.println("Client connection established.");
             System.out.println("- Connected to server: " + clientS.getInetAddress().getHostAddress());
             System.out.println("- Port number: " + clientS.getPort());
         }
-        catch (IOException e) {
-            e.printStackTrace();
+        catch (IOException ex) {
+            System.out.println("Error: Unable to establish client connection.");
+
         }
     }
 
     public void clientRun() {
-       
         clientConnect();                        //estalish connection first
-        BufferedReader userInput;
-        String inputCommand = "";
-        String prompt = "myftp> ";
+        
+        try {
+            BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in));
+            PrintWriter out = new PrintWriter(clientS.getOutputStream(), true);                     //output to server
+        
+            String inputCommand = "";
+            String prompt = "myftp> ";
 
-        try {}
             while(true) {
                 System.out.print(prompt);
 
@@ -67,11 +72,11 @@ public class FTPclient {
         int serverPort = Integer.parseInt(args[1]);
 
         if (args.length == 2) {
-            FTPclient client = new FTPclient(serverName, serverPort);
+            myftp client = new myftp(machineName, serverPort);
             client.clientRun();
         }
         else {
-            System.out.println("Usage: java FTPclient <serverMachineName> <portNumber>");
+            System.out.println("Usage: java myftp <serverMachineName> <portNumber>");
             System.exit(1);
         }
     }

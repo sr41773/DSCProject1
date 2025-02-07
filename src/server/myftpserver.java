@@ -2,23 +2,33 @@
 import java.io.*;
 import java.net.*;
 
-public class FTPserver {
+public class myftpserver {
     int portNum;                            // Port number
     ServerSocket serverS;
     Socket clientS;
 
-    public FTPserver(int portNum) {
+    public myftpserver(int portNum) {
         this.portNum = portNum;
     }
 
     public void run() {
-        this.sSocket = new ServerSocket(portNum);          
-        System.out.println("Server is running..." + 
-                            "\nListening to port number: " + portNum);
-        
-        while(true) {                                                   
-            this.clientS = serverS.accept();                //Accepting client connection
-            System.out.println("Client connected: " + clientS.getInetAddress().getHostAddress());
+        try {
+            this.serverS = new ServerSocket(portNum);          
+            System.out.println("""
+                               Server is running...
+                               Listening to port number: """ + portNum);
+            
+            while(true) {                                                   
+                this.clientS = serverS.accept();                //Accepting client connection
+                System.out.println("Client connected: " + clientS.getInetAddress().getHostAddress());
+            
+            
+            }
+
+        } catch (IOException e) {
+            System.out.println("Error: Could not listen to port: " + portNum);
+            e.printStackTrace();
+            
         }
 
     }
@@ -33,11 +43,11 @@ public class FTPserver {
         inputPort = Integer.parseInt(args[0]);              //user input
 
         if (args.length == 1) {
-            FTPserver server = new FTPserver(inputPort);
+            myftpserver server = new myftpserver(inputPort);
             server.run();
         }
         else {
-            System.out.println("Usage: java FTPserver <portNumber>");
+            System.out.println("Usage: java myftpserver <portNumber>");
             System.exit(1);
         }
     }
