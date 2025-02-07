@@ -58,10 +58,14 @@ public class myftp {
 
                 output.println(inputCommand);                    //command to server      
 
-                serverResponse = input.readLine();                       //input from server
-                while(serverResponse != null) {                //Handling server response    
+                //serverResponse = input.readLine();                //input from server
+                while((serverResponse = input.readLine()) != null) {                    //Handling server response    
+                    if (serverResponse.equals("-----------")) {
+                        break;
+                    }
+                    
                     System.out.println(serverResponse);
-                    break;       
+                    //break;       
                 }
 
             }

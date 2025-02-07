@@ -31,9 +31,7 @@ public class myftpserver {
         } catch (IOException e) {
             System.out.println("Error: Could not listen to port: " + portNum);
             e.printStackTrace();
-
         }
-
     }
 
     private void clientHandler(Socket clientS) {                        //processing commands on the server
@@ -47,24 +45,40 @@ public class myftpserver {
             while (inputCommand != null) { 
                 if (inputCommand.equals("pwd")) {
                     output.println("Current Directory: " + System.getProperty("user.dir"));
+                    output.flush();
+                }
+                else if (inputCommand.equals("ls")) {
+                    //System.out.println("printing: " + lsCommand());
+                    output.println(lsCommand());
+                    output.flush();
                 }
                 else if (inputCommand.equals("quit")) {
                     output.println("Quitting server...");
+                    output.flush();
                     break;
                 }
                 else {
                     output.println("Invalid command");
+                    output.flush();
                 }
             }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
-
-
     }
 
+    public String lsCommand() {
+        File currentDir = new File(System.getProperty("user.dir"));
+        File[] files = currentDir.listFiles();
+
+        String fileList = "";
+        for (File file : files) {
+            fileList += file.getName() + "\n";                          //gets list of files
+        }
+        fileList += "-----------";
+        return fileList;
+    }
 
     //main
     public static void main(String[] args) {
