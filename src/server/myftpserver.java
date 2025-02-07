@@ -6,6 +6,8 @@ public class myftpserver {
     int portNum;                            // Port number
     ServerSocket serverS;
     Socket clientS;
+    BufferedReader input;
+    PrintWriter output;
 
     public myftpserver(int portNum) {
         this.portNum = portNum;
@@ -21,20 +23,47 @@ public class myftpserver {
             while(true) {                                                   
                 this.clientS = serverS.accept();                //Accepting client connection
                 System.out.println("Client connected: " + clientS.getInetAddress().getHostAddress());
-            
+                
+                clientHandler(this.clientS);                          //Handling client
             
             }
 
         } catch (IOException e) {
             System.out.println("Error: Could not listen to port: " + portNum);
             e.printStackTrace();
-            
+
         }
 
     }
 
+    private void clientHandler(Socket clientS) {                        //processing commands on the server
+        try {
+            input = new BufferedReader(new InputStreamReader(clientS.getInputStream()));            //input data stream
+            output = new PrintWriter(clientS.getOutputStream(), true);                                 //output data stream
+
+            String inputCommand = "";                       //command at the terminal
+            inputCommand = input.readLine();
+
+            while (inputCommand != null) { 
+                if (inputCommand.equals("pwd")) {
+                    output.println("Current Directory: " + System.getProperty("user.dir"));
+                }
+                else if (inputCommand.equals("quit")) {
+                    output.println("Quitting server...");
+                    break;
+                }
+                else {
+                    output.println("Invalid command");
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
 
 
+    }
 
 
     //main

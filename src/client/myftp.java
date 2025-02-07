@@ -7,6 +7,8 @@ public class myftp {
     int serverPort;
     String machineName;
     Socket clientS;
+    BufferedReader input;
+    PrintWriter output;
 
     public myftp(String machineName, int serverPort) {
         this.machineName = machineName;
@@ -16,16 +18,16 @@ public class myftp {
     //to establish client connection
     public void clientConnect() {
         try {
-            this.clientS = new Socket(machineName, serverPort);
-            BufferedReader input = new BufferedReader(new InputStreamReader(clientS.getInputStream()));
+            this.clientS = new Socket(this.machineName, this.serverPort);
+            input = new BufferedReader(new InputStreamReader(clientS.getInputStream()));     //input data stream
+            output = new PrintWriter(clientS.getOutputStream(), true);                          //output data stream
 
             System.out.println("Client connection established.");
             System.out.println("- Connected to server: " + clientS.getInetAddress().getHostAddress());
             System.out.println("- Port number: " + clientS.getPort());
         }
         catch (IOException ex) {
-            System.out.println("Error: Unable to establish client connection.");
-
+            System.out.println("Error: Unable to establish successful client connection.");
         }
     }
 
@@ -33,12 +35,11 @@ public class myftp {
         clientConnect();                        //estalish connection first
         
         try {
-            BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in));
-            PrintWriter out = new PrintWriter(clientS.getOutputStream(), true);                     //output to server
-        
+            BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in));        
             String inputCommand = "";
             String prompt = "myftp> ";
-
+            
+            String serverResponse;
             while(true) {
                 System.out.print(prompt);
 
@@ -55,7 +56,13 @@ public class myftp {
                     break;
                 }
 
-                out.println(inputCommand);
+                output.println(inputCommand);                    //command to server      
+
+                serverResponse = input.readLine();                       //input from server
+                while(serverResponse != null) {                //Handling server response    
+                    System.out.println(serverResponse);
+                    break;       
+                }
 
             }
         }
