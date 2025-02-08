@@ -46,30 +46,31 @@ public class myftpserver {
                 String[] parts = command.split(" ");
                 String cmd = parts[0].toLowerCase();
 
-                switch (cmd) {
+               
+                switch (cmd) {    //get statements for the client server
                     case "get":
                         handleGet(parts);
                         break;
-                    case "put":
+                    case "put":     //put statements for the client server
                         handlePut(parts);
                         break;
-                    case "ls":
+                    case "ls":      //ls statements which lists the files and directories
                         handleLs();
                         break;
-                    case "cd":
+                    case "cd":    //cd is change directory
                         handleCd(parts);
                         break;
-                    case "pwd":
+                    case "pwd":    //prints working directory
                         handlePwd();
                         break;
-                    case "mkdir":
+                    case "mkdir":    //makes new directory
                         handleMkdir(parts);
                         break;
-                    case "delete":
+                    case "delete":    //deletes the files
                         handleDelete(parts);
                         break;
-                    case "quit":
-                        output.println("Goodbye!");
+                    case "quit":    //quit files or directories
+                        output.println("Bye. You quit.");
                         output.println("END_OF_LIST");
                         return;
                     default:
@@ -87,7 +88,7 @@ public class myftpserver {
                     clientSocket.close();
                 }
             } catch (IOException e) {
-                System.out.println("Error closing client connection: " + e.getMessage());
+                System.out.println("Error closing the client connection: " + e.getMessage());
             }
         }
     }
@@ -127,6 +128,7 @@ public class myftpserver {
         }
     }
 
+        //handles the put using file
     private void handlePut(String[] parts) throws IOException {
         if (parts.length != 3) {  // Command, filename, and size
             output.println("ERROR Usage: put <filename> <size>");
@@ -183,7 +185,7 @@ public class myftpserver {
         }
     }
 
-
+//ls using the file
     private void handleLs() {
         File[] files = currentDirectory.listFiles();
         if (files != null) {
@@ -194,6 +196,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
+        //cd using the file
     private void handleCd(String[] parts) {
         if (parts.length != 2) {
             output.println("Usage: cd <directory>");
@@ -230,6 +233,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
+        //mkdir using the file
     private void handleMkdir(String[] parts) {
         if (parts.length != 2) {
             output.println("Usage: mkdir <directory>");
@@ -246,6 +250,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
+        //delete using the file
     private void handleDelete(String[] parts) {
         if (parts.length != 2) {
             output.println("Usage: delete <filename>");
