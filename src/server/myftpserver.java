@@ -1,83 +1,279 @@
-// Server side
+// File: myftpserver.java
 import java.io.*;
 import java.net.*;
 
 public class myftpserver {
-    int portNum;                            // Port number
-    ServerSocket serverS;
-    Socket clientS;
-    BufferedReader input;
-    PrintWriter output;
+    private int portNum;
+    private ServerSocket serverSocket;
+    private Socket clientSocket;
+    private BufferedReader input;
+    private PrintWriter output;
+    private File currentDirectory;
+    private final String SERVER_DIR = "src/server"; // Base server directory
 
     public myftpserver(int portNum) {
         this.portNum = portNum;
+        this.currentDirectory = new File(".").getAbsoluteFile();
+        if (!this.currentDirectory.exists()) {
+            this.currentDirectory.mkdirs();
+        }
     }
 
     public void run() {
         try {
-            this.serverS = new ServerSocket(portNum);          
-            System.out.println("""
-                               Server is running...
-                               Listening to port number: """ + portNum);
-            
-            while(true) {                                                   
-                this.clientS = serverS.accept();                //Accepting client connection
-                System.out.println("Client connected: " + clientS.getInetAddress().getHostAddress());
-                
-                clientHandler(this.clientS);                          //Handling client
-            
+            serverSocket = new ServerSocket(portNum);
+            System.out.println("Server is running...");
+            System.out.println("Listening on port: " + portNum);
+
+            while (true) {
+                clientSocket = serverSocket.accept();
+                System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
+                handleClient(clientSocket);
             }
-
         } catch (IOException e) {
-            System.out.println("Error: Could not listen to port: " + portNum);
+            System.out.println("Error: Could not listen on port " + portNum);
             e.printStackTrace();
-
         }
-
     }
 
-    private void clientHandler(Socket clientS) {                        //processing commands on the server
+    private void handleClient(Socket clientSocket) {
         try {
-            input = new BufferedReader(new InputStreamReader(clientS.getInputStream()));            //input data stream
-            output = new PrintWriter(clientS.getOutputStream(), true);                                 //output data stream
+            input = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            output = new PrintWriter(clientSocket.getOutputStream(), true);
 
-            String inputCommand = "";                       //command at the terminal
-            inputCommand = input.readLine();
+            String command;
+            while ((command = input.readLine()) != null) {
+                String[] parts = command.split(" ");
+                String cmd = parts[0].toLowerCase();
 
-            while (inputCommand != null) { 
-                if (inputCommand.equals("pwd")) {
-                    output.println("Current Directory: " + System.getProperty("user.dir"));
-                }
-                else if (inputCommand.equals("quit")) {
-                    output.println("Quitting server...");
-                    break;
-                }
-                else {
-                    output.println("Invalid command");
+                switch (cmd) {
+                    case "get":
+                        handleGet(parts);
+                        break;
+                    case "put":
+                        handlePut(parts);
+                        break;
+                    case "ls":
+                        handleLs();
+                        break;
+                    case "cd":
+                        handleCd(parts);
+                        break;
+                    case "pwd":
+                        handlePwd();
+                        break;
+                    case "mkdir":
+                        handleMkdir(parts);
+                        break;
+                    case "delete":
+                        handleDelete(parts);
+                        break;
+                    case "quit":
+                        output.println("Goodbye!");
+                        output.println("END_OF_LIST");
+                        return;
+                    default:
+                        output.println("Unknown command");
+                        output.println("END_OF_LIST");
                 }
             }
+        } catch (IOException e) {
+            System.out.println("Error handling client: " + e.getMessage());
+        } finally {
+            try {
+                if (clientSocket != null && !clientSocket.isClosed()) {
+                    input.close();
+                    output.close();
+                    clientSocket.close();
+                }
+            } catch (IOException e) {
+                System.out.println("Error closing client connection: " + e.getMessage());
+            }
+        }
+    }
 
-        } catch (Exception e) {
-            e.printStackTrace();
+    private void handleGet(String[] parts) throws IOException {
+        if (parts.length != 2) {
+            output.println("ERROR Usage: get <filename>");
+            return;
+        }
+
+        File file = new File(currentDirectory, parts[1]);
+        if (!file.exists() || !file.isFile()) {
+            output.println("ERROR File not found: " + parts[1]);
+            return;
+        }
+
+        try {
+            output.println("SIZE " + file.length());
+            output.flush();
+            
+            DataOutputStream dataOutput = new DataOutputStream(clientSocket.getOutputStream());
+            FileInputStream fis = new FileInputStream(file);
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                dataOutput.write(buffer, 0, bytesRead);
+            }
+            
+            dataOutput.flush();
+            fis.close();
+            
+            output.println("END_OF_LIST");
+            output.flush();
+        } catch (IOException e) {
+            output.println("ERROR Failed to send file: " + e.getMessage());
+        }
+    }
+
+    private void handlePut(String[] parts) throws IOException {
+        if (parts.length != 3) {  // Command, filename, and size
+            output.println("ERROR Usage: put <filename> <size>");
+            return;
+        }
+
+        String filename = parts[1];
+        long size;
+        try {
+            size = Long.parseLong(parts[2]);
+        } catch (NumberFormatException e) {
+            output.println("ERROR Invalid file size");
+            return;
+        }
+
+        // Ensure we're saving to the server directory
+        File serverDir = new File(SERVER_DIR);
+        if (!serverDir.exists()) {
+            serverDir.mkdirs();
         }
         
-
-
+        // Create file in the server directory
+        File file = new File(serverDir, filename);
+        
+        try {
+            output.println("READY");
+            output.flush();
+            
+            DataInputStream dataInput = new DataInputStream(clientSocket.getInputStream());
+            FileOutputStream fos = new FileOutputStream(file);
+            byte[] buffer = new byte[4096];
+            long received = 0;
+            
+            while (received < size) {
+                int bytesToRead = (int) Math.min(buffer.length, size - received);
+                int bytesRead = dataInput.read(buffer, 0, bytesToRead);
+                
+                if (bytesRead == -1) break;
+                
+                fos.write(buffer, 0, bytesRead);
+                received += bytesRead;
+            }
+            
+            fos.close();
+            
+            output.println("File uploaded successfully to server directory");
+            output.println("END_OF_LIST");
+        } catch (IOException e) {
+            output.println("ERROR Failed to receive file: " + e.getMessage());
+            output.println("END_OF_LIST");
+            if (file.exists()) {
+                file.delete();  // Clean up partial file
+            }
+        }
     }
 
 
-    //main
-    public static void main(String[] args) {
-        int inputPort = 8000; // default
-        inputPort = Integer.parseInt(args[0]);              //user input
+    private void handleLs() {
+        File[] files = currentDirectory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                output.println(file.getName() + (file.isDirectory() ? "/" : ""));
+            }
+        }
+        output.println("END_OF_LIST");
+    }
 
-        if (args.length == 1) {
-            myftpserver server = new myftpserver(inputPort);
-            server.run();
+    private void handleCd(String[] parts) {
+        if (parts.length != 2) {
+            output.println("Usage: cd <directory>");
+            output.println("END_OF_LIST");
+            return;
         }
-        else {
-            System.out.println("Usage: java myftpserver <portNumber>");
-            System.exit(1);
+    
+        String path = parts[1];
+        File newDir;
+    
+        if (path.equals("..")) {
+            newDir = currentDirectory.getParentFile();
+            if (newDir == null) {
+                output.println("Already at the root directory.");
+                output.println("END_OF_LIST");
+                return;
+            }
+        } else {
+            newDir = new File(currentDirectory, path);
         }
+    
+        if (newDir.exists() && newDir.isDirectory()) {
+            currentDirectory = newDir;
+            output.println("Changed to " + currentDirectory.getAbsolutePath());
+        } else {
+            output.println("Not a directory or does not exist.");
+        }
+    
+        output.println("END_OF_LIST");
+    }
+
+    private void handlePwd() {
+        output.println(currentDirectory.getAbsolutePath());
+        output.println("END_OF_LIST");
+    }
+
+    private void handleMkdir(String[] parts) {
+        if (parts.length != 2) {
+            output.println("Usage: mkdir <directory>");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        File newDir = new File(currentDirectory, parts[1]);
+        if (newDir.mkdir()) {
+            output.println("Directory created");
+        } else {
+            output.println("Could not create directory");
+        }
+        output.println("END_OF_LIST");
+    }
+
+    private void handleDelete(String[] parts) {
+        if (parts.length != 2) {
+            output.println("Usage: delete <filename>");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        File file = new File(currentDirectory, parts[1]);
+        if (file.exists()) {
+            if (file.delete()) {
+                output.println("File deleted");
+            } else {
+                output.println("Could not delete file");
+            }
+        } else {
+            output.println("File not found");
+        }
+        output.println("END_OF_LIST");
+    }
+
+    public static void main(String[] args) {
+        if (args.length != 1) {
+            System.out.println("Usage: java myftpserver <port>");
+            return;
+        }
+
+        int port = Integer.parseInt(args[0]);
+        myftpserver server = new myftpserver(port);
+        server.run();
     }
 }
