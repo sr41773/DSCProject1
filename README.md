@@ -27,5 +27,13 @@ java -cp bin myftp <machine_name> <port_number>
 cd src\server
 javac -d bin src/server/myftpserver.java
 java -cp bin myftp <port_number>
+
+NOTE:
+Default port number: 8000
+Default machine name: localhost
+
+(c.)
+This project was done in its entirety by Mrudang Patel and Shriya Rasale. We hereby 
+state that we have not received unauthorized help of any form.
  
 
