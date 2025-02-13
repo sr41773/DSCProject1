@@ -222,7 +222,15 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-    private void handleCd(String[] parts) {
+    private void handleCd(String[] parts) throws IOException {
+        if (parts.length == 1) {
+            // If only "cd" is entered, reset to base directory
+            currentDirectory = BASE_DIR;
+            output.println("Changed to base directory: " + currentDirectory.getCanonicalPath());
+            output.println("END_OF_LIST");
+            return;
+        }
+        
         if (parts.length != 2) {
             output.println("Usage: cd <directory>");
             output.println("END_OF_LIST");
@@ -271,6 +279,7 @@ public class myftpserver {
         }
     }
 
+    
     private boolean isWithinBaseDir(File dir) {
         try {
             String basePath = BASE_DIR.getCanonicalPath();
@@ -281,6 +290,11 @@ public class myftpserver {
         }
     }
 
+
+
+
+
+    
     private void handlePwd() {
         try {
             output.println(currentDirectory.getCanonicalPath());
