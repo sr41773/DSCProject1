@@ -1,248 +1,353 @@
-// Server side
 import java.io.*;
 import java.net.*;
+import java.nio.file.*;
 
 public class myftpserver {
-    int portNum;                            // port number
-    ServerSocket serverS;
-    Socket clientS;
-    BufferedReader input;
-    PrintWriter output;
+    private int portNum;
+    private ServerSocket serverSocket;
+    private Socket clientSocket;
+    private BufferedReader input;
+    private PrintWriter output;
+    private File currentDirectory;
+    private final File BASE_DIR;
 
     public myftpserver(int portNum) {
         this.portNum = portNum;
+        // Use the current working directory as the base directory
+        this.BASE_DIR = new File(System.getProperty("user.dir")).getAbsoluteFile();
+        this.currentDirectory = BASE_DIR;
+        
+        // Create base directory if it doesn't exist
+        if (!this.BASE_DIR.exists()) {
+            this.BASE_DIR.mkdirs();
+        }
     }
 
     public void run() {
         try {
-            this.serverS = new ServerSocket(portNum);          
-            System.out.println("""
-                               Server is running...
-                               Listening to port number: """ + portNum);
-            
-            while(true) {                                                   
-                this.clientS = serverS.accept();                //accepting client connection
-                System.out.println("Client connected: " + clientS.getInetAddress().getHostAddress());
-                
-                clientHandler(this.clientS);                          //handling client
-            
-            }
+            serverSocket = new ServerSocket(portNum);
+            System.out.println("Server is running...");
+            System.out.println("Listening on port: " + portNum);
+            System.out.println("Base directory: " + BASE_DIR.getAbsolutePath());
 
+            while (true) {
+                clientSocket = serverSocket.accept();
+                System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
+                handleClient(clientSocket);
+            }
         } catch (IOException e) {
-            System.out.println("Error: Could not listen to port: " + portNum);
+            System.out.println("Error: Could not listen on port " + portNum);
             e.printStackTrace();
         }
     }
 
-    private void clientHandler(Socket clientS) {
+    private void handleClient(Socket clientSocket) {
         try {
-            //input and output stream handler for client socket
-            input = new BufferedReader(new InputStreamReader(clientS.getInputStream()));
-            output = new PrintWriter(clientS.getOutputStream(), true);
+            input = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            output = new PrintWriter(clientSocket.getOutputStream(), true);
 
-            String inputCommand;
-            while ((inputCommand = input.readLine()) != null) {
-                String[] cmdParts = inputCommand.split(" ");            //split for parameters
-                String cmd = cmdParts[0];
-                
+            String command;
+            while ((command = input.readLine()) != null) {
+                String[] parts = command.split(" ");
+                String cmd = parts[0].toLowerCase();
+
                 switch (cmd) {
                     case "get":
-                        if (cmdParts.length == 2) {                 //initializing the number of command parameters
-                            String fileName = cmdParts[1];
-                            File file = new File(System.getProperty("user.dir"), fileName);
-                            
-                            if (!file.exists()) {
-                                output.println("File does not exist");
-                                output.println("END_OF_LIST");
-                            } else {
-                                output.println("SIZE " + file.length());                
-                                getCommand_sendFile(fileName, output, clientS.getOutputStream());
-                            }
-                        } else {
-                            output.println("Usage: get <filename>");
-                            output.println("END_OF_LIST");
-                        }
+                        handleGet(parts);
                         break;
                     case "put":
-                        if (cmdParts.length == 2) {
-                            String fileName = cmdParts[1];
-                            output.println("READY");  // signal to client 
-                            putCommand_receiveFile(fileName, clientS.getInputStream());
-                        } else {
-                            output.println("Usage: put <filename>");
-                            output.println("END_OF_LIST");  
-                        }
-                        break;
-                    case "pwd":
-                        output.println("Current Directory: " + System.getProperty("user.dir"));
-                        output.println("END_OF_LIST");  // added end marker
+                        handlePut(parts);
                         break;
                     case "ls":
-                        String listing = lsCommand();                   //gets respective files
-                                                            //issue; change "-----" to confirm end of list
-                        output.println(listing);
-                        if (!listing.endsWith("END_OF_LIST")) {
-                            output.println("END_OF_LIST");
-                        }
-                        break;
-                    case "delete":
-                        if (cmdParts.length == 2) {
-                            String fileName = cmdParts[1];
-                            File fileToDelete = new File(System.getProperty("user.dir"), fileName);
-                            if (fileToDelete.exists()) {
-                                if (fileToDelete.delete()) {
-                                    output.println("File deleted successfully");
-                                } else {
-                                    output.println("Failed to delete file");
-                                }
-                            } else {
-                                output.println("File does not exist");
-                            }
-                            output.println("END_OF_LIST");
-                        } else {
-                            output.println("Usage: delete <filename>");
-                            output.println("END_OF_LIST");
-                        }
+                        handleLs();
                         break;
                     case "cd":
-                        if (cmdParts.length == 2) {
-                            String dirName = cmdParts[1];
-                            File newDir;
-                            if (dirName.equals("..")) {
-                                newDir = new File(System.getProperty("user.dir")).getParentFile();
-                            } else {
-                                newDir = new File(System.getProperty("user.dir"), dirName);
-                            }
-                            
-                            if (newDir.exists() && newDir.isDirectory()) {
-                                System.setProperty("user.dir", newDir.getAbsolutePath());
-                                output.println("Directory changed to: " + System.getProperty("user.dir"));
-                                output.println("END_OF_LIST");  
-                            } else {
-                                output.println("Directory does not exist");
-                                output.println("END_OF_LIST");  
-                            }
-                        } else {
-                            output.println("Usage: cd <directory> or cd ..");
-                            output.println("END_OF_LIST");  
-                        }
+                        handleCd(parts);
+                        break;
+                    case "pwd":
+                        handlePwd();
                         break;
                     case "mkdir":
-                        if (cmdParts.length == 2) {
-                            String dirName = cmdParts[1];
-                            File newDir = new File(System.getProperty("user.dir"), dirName);
-                            if (newDir.mkdir()) {
-                                output.println("Directory created successfully");
-                                output.println("END_OF_LIST");  
-                            } else {
-                                output.println("Failed to create directory");
-                                output.println("END_OF_LIST");  
-                            }
-                        } else {
-                            output.println("Usage: mkdir <directory>");
-                            output.println("END_OF_LIST");  
-                        }
+                        handleMkdir(parts);
+                        break;
+                    case "delete":
+                        handleDelete(parts);
                         break;
                     case "quit":
-                        output.println("Quitting server...");
-                        output.println("END_OF_LIST");  
-                        break;
+                        output.println("Bye. You quit.");
+                        output.println("END_OF_LIST");
+                        return;
                     default:
-                        output.println("Invalid command");
-                        output.println("END_OF_LIST");  
-                        break;
+                        output.println("Unknown command");
+                        output.println("END_OF_LIST");
                 }
             }
-            
-            if (clientS != null && !clientS.isClosed()) {       //disconnecting client
-                input.close();              //data streams closed
-                output.close();
-                clientS.close();
-            }
-
         } catch (IOException e) {
             System.out.println("Error handling client: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    public String lsCommand() {
-        File currentDir = new File(System.getProperty("user.dir"));
-        File[] files = currentDir.listFiles();
-
-        String fileList = "";
-        for (File file : files) {
-            fileList += file.getName() + "\n";                          //gets list of files
-        }
-        fileList += "END_OF_LIST";  // fixed!! > changed from ----------- to be more specific
-        return fileList;
-    }
-
-    public void getCommand_sendFile(String fileName, PrintWriter fileStatus, OutputStream fileData) {
-        File file = new File(System.getProperty("user.dir"), fileName);
-        FileInputStream fis = null;
-
-        try {
-            fis = new FileInputStream(file);
-            byte[] buffer = new byte[4096];         //buffer size changed
-            int fileReadBytes;
-            
-            while ((fileReadBytes = fis.read(buffer)) > 0) {
-                fileData.write(buffer, 0, fileReadBytes);
-            }
-            fileData.flush();
-            output.println("END_OF_LIST");
-
-        } catch (IOException e) {
-            fileStatus.println("Error: Could not send file.");
-            fileStatus.println("END_OF_LIST");
         } finally {
             try {
-                if (fis != null) fis.close();
+                if (clientSocket != null && !clientSocket.isClosed()) {
+                    input.close();
+                    output.close();
+                    clientSocket.close();
+                }
             } catch (IOException e) {
-                System.out.println("Error closing file stream: " + e.getMessage());
+                System.out.println("Error closing the client connection: " + e.getMessage());
             }
         }
     }
-    
-    // receivnig from clietns end
-    private void putCommand_receiveFile(String fileName, InputStream inputStream) {
-        FileOutputStream fos = null;
+
+    private void handleGet(String[] parts) throws IOException {
+        if (parts.length != 2) {
+            output.println("ERROR Usage: get <filename>");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        File file = new File(currentDirectory, parts[1]);
+        if (!isSubDirectory(file, BASE_DIR)) {
+            output.println("ERROR Access denied: File outside base directory");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        if (!file.exists() || !file.isFile()) {
+            output.println("ERROR File not found: " + parts[1]);
+            output.println("END_OF_LIST");
+            return;
+        }
+
         try {
-            fos = new FileOutputStream(new File(System.getProperty("user.dir"), fileName));
-            byte[] buffer = new byte[4096];
+            output.println("SIZE " + file.length());
+            output.flush();
+            
+            BufferedOutputStream dataOutput = new BufferedOutputStream(clientSocket.getOutputStream());
+            BufferedInputStream fis = new BufferedInputStream(new FileInputStream(file));
+            byte[] buffer = new byte[8192];
             int bytesRead;
-            
-            while ((bytesRead = inputStream.read(buffer)) > 0) {
-                fos.write(buffer, 0, bytesRead);
+
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                dataOutput.write(buffer, 0, bytesRead);
             }
             
-            output.println("File received successfully");
+            dataOutput.flush();
+            fis.close();
+            
+            // Wait a bit before sending END_OF_LIST to ensure data is transferred
+            Thread.sleep(100);
+            output.println("END_OF_LIST");
+            output.flush();
+        } catch (IOException | InterruptedException e) {
+            output.println("ERROR Failed to send file: " + e.getMessage());
+            output.println("END_OF_LIST");
+        }
+    }
+
+    private void handlePut(String[] parts) throws IOException {
+        if (parts.length != 3) {
+            output.println("ERROR Usage: put <filename> <size>");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        String filename = parts[1];
+        long size;
+        try {
+            size = Long.parseLong(parts[2]);
+        } catch (NumberFormatException e) {
+            output.println("ERROR Invalid file size");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        // Sanitize the filename and create full path
+        filename = sanitizeFilename(filename);
+        File file = new File(currentDirectory, filename);
+
+        // Check if the target location is within base directory
+        if (!isSubDirectory(file, BASE_DIR)) {
+            output.println("ERROR Access denied: Cannot write outside base directory");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        try {
+            output.println("READY");
+            output.flush();
+
+            BufferedInputStream dataInput = new BufferedInputStream(clientSocket.getInputStream());
+            BufferedOutputStream fos = new BufferedOutputStream(new FileOutputStream(file));
+            byte[] buffer = new byte[8192];
+            long received = 0;
+            
+            while (received < size) {
+                int bytesToRead = (int) Math.min(buffer.length, size - received);
+                int bytesRead = dataInput.read(buffer, 0, bytesToRead);
+                
+                if (bytesRead == -1) {
+                    fos.close();
+                    file.delete();
+                    output.println("ERROR File transfer incomplete");
+                    output.println("END_OF_LIST");
+                    return;
+                }
+                
+                fos.write(buffer, 0, bytesRead);
+                received += bytesRead;
+            }
+            
+            fos.close();
+            
+            output.println("File uploaded successfully");
             output.println("END_OF_LIST");
         } catch (IOException e) {
-            output.println("Error receiving file: " + e.getMessage());
+            output.println("ERROR Failed to receive file: " + e.getMessage());
             output.println("END_OF_LIST");
-        } finally {
-            try {
-                if (fos != null) fos.close();
-            } catch (IOException e) {
-                System.out.println("Error closing file: " + e.getMessage());
+            if (file.exists()) {
+                file.delete();  // Clean up partial file
             }
         }
     }
 
-    //main
-    public static void main(String[] args) {
-        int inputPort = 8000; // default
-        inputPort = Integer.parseInt(args[0]);              //user input
-
-        if (args.length == 1) {
-            myftpserver server = new myftpserver(inputPort);
-            server.run();
+    private void handleLs() {
+        try {
+            Files.list(currentDirectory.toPath())
+                .forEach(path -> {
+                    File file = path.toFile();
+                    output.println(file.getName() + (file.isDirectory() ? "/" : ""));
+                });
+        } catch (IOException e) {
+            output.println("ERROR: Unable to list directory");
         }
-        else {
-            System.out.println("Usage: java myftpserver <portNumber>");
-            System.exit(1);
+        output.println("END_OF_LIST");
+    }
+
+    private void handleCd(String[] parts) {
+        if (parts.length != 2) {
+            output.println("Usage: cd <directory>");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        try {
+            File newDir;
+            if (parts[1].equals("..")) {
+                newDir = currentDirectory.getCanonicalFile().getParentFile();
+            } else if (parts[1].equals(".")) {
+                newDir = currentDirectory;
+            } else {
+                newDir = new File(currentDirectory, parts[1]).getCanonicalFile();
+            }
+
+            // Check if the new directory exists and is within base directory
+            if (!newDir.exists() || !newDir.isDirectory()) {
+                output.println("Directory does not exist");
+                output.println("END_OF_LIST");
+                return;
+            }
+
+            if (!isSubDirectory(newDir, BASE_DIR)) {
+                output.println("Access denied: Cannot navigate above base directory");
+                output.println("END_OF_LIST");
+                return;
+            }
+
+            currentDirectory = newDir;
+            output.println("Changed to: " + currentDirectory.getCanonicalPath());
+            output.println("END_OF_LIST");
+        } catch (IOException e) {
+            output.println("ERROR: Invalid directory path");
+            output.println("END_OF_LIST");
+        }
+    }
+
+    private void handlePwd() {
+        try {
+            output.println(currentDirectory.getCanonicalPath());
+        } catch (IOException e) {
+            output.println("ERROR: Unable to determine current directory");
+        }
+        output.println("END_OF_LIST");
+    }
+
+    private void handleMkdir(String[] parts) {
+        if (parts.length != 2) {
+            output.println("Usage: mkdir <directory>");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        File newDir = new File(currentDirectory, sanitizeFilename(parts[1]));
+        
+        if (!isSubDirectory(newDir, BASE_DIR)) {
+            output.println("ERROR: Cannot create directory outside base directory");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        if (newDir.mkdir()) {
+            output.println("Directory created");
+        } else {
+            output.println("Could not create directory");
+        }
+        output.println("END_OF_LIST");
+    }
+
+    private void handleDelete(String[] parts) {
+        if (parts.length != 2) {
+            output.println("Usage: delete <filename>");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        File file = new File(currentDirectory, parts[1]);
+        
+        if (!isSubDirectory(file, BASE_DIR)) {
+            output.println("ERROR: Cannot delete files outside base directory");
+            output.println("END_OF_LIST");
+            return;
+        }
+
+        if (file.exists()) {
+            if (file.delete()) {
+                output.println("File deleted");
+            } else {
+                output.println("Could not delete file");
+            }
+        } else {
+            output.println("File not found");
+        }
+        output.println("END_OF_LIST");
+    }
+
+    // Helper method to check if a path is within the base directory
+    private boolean isSubDirectory(File child, File parent) {
+        try {
+            String parentPath = parent.getCanonicalPath() + File.separator;
+            String childPath = child.getCanonicalPath();
+            return childPath.startsWith(parentPath);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    // Helper method to sanitize filenames
+    private String sanitizeFilename(String filename) {
+        return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
+    }
+
+    public static void main(String[] args) {
+        if (args.length != 1) {
+            System.out.println("Usage: java myftpserver <port>");
+            return;
+        }
+
+        try {
+            int port = Integer.parseInt(args[0]);
+            myftpserver server = new myftpserver(port);
+            server.run();
+        } catch (NumberFormatException e) {
+            System.out.println("Error: Port must be a valid number");
         }
     }
 }
