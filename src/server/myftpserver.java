@@ -11,24 +11,23 @@ public class myftpserver {
     private File currentDirectory;
     private final File BASE_DIR;
 
-    public myftpserver(int portNum) {
+    public myftpserver(int portNum) {   // Use the current working directory as the base directory
         this.portNum = portNum;
-        // Use the current working directory as the base directory
         this.BASE_DIR = new File(System.getProperty("user.dir")).getAbsoluteFile();
         this.currentDirectory = BASE_DIR;
         
-        // Create base directory if it doesn't exist
-        if (!this.BASE_DIR.exists()) {
+        if (!this.BASE_DIR.exists()) {  //if it doesn't exist create base directory usinf mkdir
             this.BASE_DIR.mkdirs();
         }
     }
 
+    //runs the server and prints message to user
     public void run() {
         try {
             serverSocket = new ServerSocket(portNum);
             System.out.println("Server is running...");
-            System.out.println("Listening on port: " + portNum);
-            System.out.println("Base directory: " + BASE_DIR.getAbsolutePath());
+            // System.out.println("Listening on port: " + portNum);
+            // System.out.println("Base directory: " + BASE_DIR.getAbsolutePath());
 
             while (true) {
                 clientSocket = serverSocket.accept();
@@ -41,17 +40,18 @@ public class myftpserver {
         }
     }
 
-    private void handleClient(Socket clientSocket) {
+    private void handleClient(Socket clientSocket) { //switch statements for the different commands required
         try {
+            //for the input for commands
             input = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             output = new PrintWriter(clientSocket.getOutputStream(), true);
 
             String command;
             while ((command = input.readLine()) != null) {
                 String[] parts = command.split(" ");
-                String cmd = parts[0].toLowerCase();
+                String cmd = parts[0].toLowerCase(); //lowercase to ensure user can enter in caps or not
 
-                switch (cmd) {
+                switch (cmd) { //switch statement
                     case "get":
                         handleGet(parts);
                         break;
@@ -78,11 +78,11 @@ public class myftpserver {
                         output.println("END_OF_LIST");
                         return;
                     default:
-                        output.println("Unknown command");
+                        output.println("Unknown command"); //if user enters a command that isnt one of the above ones
                         output.println("END_OF_LIST");
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException e) { //error detection
             System.out.println("Error handling client: " + e.getMessage());
         } finally {
             try {
@@ -97,6 +97,7 @@ public class myftpserver {
         }
     }
 
+    //get command to send files to the client
     private void handleGet(String[] parts) throws IOException {
         if (parts.length != 2) {
             output.println("ERROR Usage: get <filename>");
@@ -133,7 +134,7 @@ public class myftpserver {
             dataOutput.flush();
             fis.close();
             
-            // Wait a bit before sending END_OF_LIST to ensure data is transferred
+      
             Thread.sleep(100);
             output.println("END_OF_LIST");
             output.flush();
@@ -143,6 +144,7 @@ public class myftpserver {
         }
     }
 
+    //put command
     private void handlePut(String[] parts) throws IOException {
         if (parts.length != 3) {
             output.println("ERROR Usage: put <filename> <size>");
@@ -160,11 +162,12 @@ public class myftpserver {
             return;
         }
 
-        // Sanitize the filename and create full path
+   
         filename = sanitizeFilename(filename);
         File file = new File(currentDirectory, filename);
 
-        // Check if the target location is within base directory
+    
+        //error handles
         if (!isSubDirectory(file, BASE_DIR)) {
             output.println("ERROR Access denied: Cannot write outside base directory");
             output.println("END_OF_LIST");
@@ -204,11 +207,12 @@ public class myftpserver {
             output.println("ERROR Failed to receive file: " + e.getMessage());
             output.println("END_OF_LIST");
             if (file.exists()) {
-                file.delete();  // Clean up partial file
+                file.delete();  
             }
         }
     }
 
+    //ls command - to list files in the current directory
     private void handleLs() {
         try {
             Files.list(currentDirectory.toPath())
@@ -222,9 +226,10 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
+    //cd changes directory
     private void handleCd(String[] parts) throws IOException {
         if (parts.length == 1) {
-            // If only "cd" is entered, reset to base directory
+         
             currentDirectory = BASE_DIR;
             output.println("Changed to base directory: " + currentDirectory.getCanonicalPath());
             output.println("END_OF_LIST");
@@ -242,7 +247,7 @@ public class myftpserver {
             String path = parts[1];
 
             if (path.equals("..")) {
-                // Going up one directory
+               
                 newDir = currentDirectory.getParentFile();
                 if (newDir == null || !isWithinBaseDir(newDir)) {
                     output.println("Cannot go above base directory");
@@ -250,10 +255,10 @@ public class myftpserver {
                     return;
                 }
             } else if (path.equals(".")) {
-                // Stay in current directory
+            
                 newDir = currentDirectory;
             } else {
-                // Change to specified directory
+                
                 newDir = new File(currentDirectory, path).getCanonicalFile();
                 if (!isWithinBaseDir(newDir)) {
                     output.println("Cannot access directory outside base directory");
@@ -262,7 +267,7 @@ public class myftpserver {
                 }
             }
 
-            // Check if directory exists and is actually a directory
+         
             if (!newDir.exists() || !newDir.isDirectory()) {
                 output.println("Directory does not exist");
                 output.println("END_OF_LIST");
@@ -279,7 +284,7 @@ public class myftpserver {
         }
     }
 
-    
+    //helper method
     private boolean isWithinBaseDir(File dir) {
         try {
             String basePath = BASE_DIR.getCanonicalPath();
@@ -295,7 +300,7 @@ public class myftpserver {
 
 
     
-    private void handlePwd() {
+    private void handlePwd() { //handles pwd show current directory
         try {
             output.println(currentDirectory.getCanonicalPath());
         } catch (IOException e) {
@@ -304,7 +309,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-    private void handleMkdir(String[] parts) {
+    private void handleMkdir(String[] parts) { //mkdir makes new directory
         if (parts.length != 2) {
             output.println("Usage: mkdir <directory>");
             output.println("END_OF_LIST");
@@ -319,7 +324,7 @@ public class myftpserver {
             return;
         }
 
-        if (newDir.mkdir()) {
+        if (newDir.mkdir()) { //if there isnt a directory create one else output that you cant make it
             output.println("Directory created");
         } else {
             output.println("Could not create directory");
@@ -327,7 +332,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-    private void handleDelete(String[] parts) {
+    private void handleDelete(String[] parts) { //delete command which deletes file or directory
         if (parts.length != 2) {
             output.println("Usage: delete <filename>");
             output.println("END_OF_LIST");
@@ -342,6 +347,12 @@ public class myftpserver {
             return;
         }
 
+        //if file is there and calls delete command delete it; if not exsisting then print error message
+
+
+
+
+        
         if (file.exists()) {
             if (file.delete()) {
                 output.println("File deleted");
@@ -354,7 +365,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-    // Helper method to check if a path is within the base directory
+  
     private boolean isSubDirectory(File child, File parent) {
         try {
             String parentPath = parent.getCanonicalPath() + File.separator;
@@ -365,7 +376,7 @@ public class myftpserver {
         }
     }
 
-    // Helper method to sanitize filenames
+   
     private String sanitizeFilename(String filename) {
         return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
     }
