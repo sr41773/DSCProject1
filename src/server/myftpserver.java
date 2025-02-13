@@ -1,3 +1,4 @@
+// File: myftpserver.java
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
@@ -21,7 +22,7 @@ public class myftpserver {
         }
     }
 
-    //runs the server and prints message to user
+    //start runing the server print message to user
     public void run() {
         try {
             serverSocket = new ServerSocket(portNum);
@@ -32,7 +33,7 @@ public class myftpserver {
             while (true) {
                 clientSocket = serverSocket.accept();
                 System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
-                handleClient(clientSocket);
+                command_handler(clientSocket);
             }
         } catch (IOException e) {
             System.out.println("Error: Could not listen on port " + portNum);
@@ -40,7 +41,7 @@ public class myftpserver {
         }
     }
 
-    private void handleClient(Socket clientSocket) { //switch statements for the different commands required
+    private void command_handler(Socket clientSocket) { //switch statements for the different commands required
         try {
             //for the input for commands
             input = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
@@ -53,25 +54,25 @@ public class myftpserver {
 
                 switch (cmd) { //switch statement
                     case "get":
-                        handleGet(parts);
+                        get_cmd(parts);
                         break;
                     case "put":
-                        handlePut(parts);
+                        put_cmd(parts);
                         break;
                     case "ls":
-                        handleLs();
+                        ls_cmd();
                         break;
                     case "cd":
-                        handleCd(parts);
+                        cd_cmd(parts);
                         break;
                     case "pwd":
-                        handlePwd();
+                        pwd_cmd();
                         break;
                     case "mkdir":
-                        handleMkdir(parts);
+                        mkdir_cmd(parts);
                         break;
                     case "delete":
-                        handleDelete(parts);
+                        delete_cmd(parts);
                         break;
                     case "quit":
                         output.println("Bye. You quit.");
@@ -86,7 +87,7 @@ public class myftpserver {
             System.out.println("Error handling client: " + e.getMessage());
         } finally {
             try {
-                if (clientSocket != null && !clientSocket.isClosed()) {
+                if (clientSocket != null && !clientSocket.isClosed()) {   //close socket for client
                     input.close();
                     output.close();
                     clientSocket.close();
@@ -98,7 +99,7 @@ public class myftpserver {
     }
 
     //get command to send files to the client
-    private void handleGet(String[] parts) throws IOException {
+    private void get_cmd(String[] parts) throws IOException {
         if (parts.length != 2) {
             output.println("ERROR Usage: get <filename>");
             output.println("END_OF_LIST");
@@ -106,7 +107,7 @@ public class myftpserver {
         }
 
         File file = new File(currentDirectory, parts[1]);
-        if (!isSubDirectory(file, BASE_DIR)) {
+        if (!isSubDirectory(file, BASE_DIR)) {                          //limit access to unauthorized files
             output.println("ERROR Access denied: File outside base directory");
             output.println("END_OF_LIST");
             return;
@@ -122,9 +123,10 @@ public class myftpserver {
             output.println("SIZE " + file.length());
             output.flush();
             
+            //two data streams for the data going to and from the client
             BufferedOutputStream dataOutput = new BufferedOutputStream(clientSocket.getOutputStream());
             BufferedInputStream fis = new BufferedInputStream(new FileInputStream(file));
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[8192];           //test buffer size change from 4096 to 8192
             int bytesRead;
 
             while ((bytesRead = fis.read(buffer)) != -1) {
@@ -135,7 +137,7 @@ public class myftpserver {
             fis.close();
             
       
-            Thread.sleep(100);
+            Thread.sleep(100);                  //buffer time: waiting till the file transfer is complete
             output.println("END_OF_LIST");
             output.flush();
         } catch (IOException | InterruptedException e) {
@@ -145,7 +147,7 @@ public class myftpserver {
     }
 
     //put command
-    private void handlePut(String[] parts) throws IOException {
+    private void put_cmd(String[] parts) throws IOException {
         if (parts.length != 3) {
             output.println("ERROR Usage: put <filename> <size>");
             output.println("END_OF_LIST");
@@ -161,12 +163,10 @@ public class myftpserver {
             output.println("END_OF_LIST");
             return;
         }
-
+ 
+        //clean and filter out file name
+        File file = new File(currentDirectory, filename.replaceAll("[^a-zA-Z0-9.-]", "_"));
    
-        filename = sanitizeFilename(filename);
-        File file = new File(currentDirectory, filename);
-
-    
         //error handles
         if (!isSubDirectory(file, BASE_DIR)) {
             output.println("ERROR Access denied: Cannot write outside base directory");
@@ -178,9 +178,10 @@ public class myftpserver {
             output.println("READY");
             output.flush();
 
+            //sending data to and from client end
             BufferedInputStream dataInput = new BufferedInputStream(clientSocket.getInputStream());
             BufferedOutputStream fos = new BufferedOutputStream(new FileOutputStream(file));
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[8192]; //8192 <- 4096
             long received = 0;
             
             while (received < size) {
@@ -195,7 +196,7 @@ public class myftpserver {
                     return;
                 }
                 
-                fos.write(buffer, 0, bytesRead);
+                fos.write(buffer, 0, bytesRead);        //bytes being written to file
                 received += bytesRead;
             }
             
@@ -213,13 +214,13 @@ public class myftpserver {
     }
 
     //ls command - to list files in the current directory
-    private void handleLs() {
+    private void ls_cmd() {
         try {
-            Files.list(currentDirectory.toPath())
-                .forEach(path -> {
+            Files.list(currentDirectory.toPath()).forEach(path -> {
                     File file = path.toFile();
                     output.println(file.getName() + (file.isDirectory() ? "/" : ""));
-                });
+            });
+        
         } catch (IOException e) {
             output.println("ERROR: Unable to list directory");
         }
@@ -227,7 +228,7 @@ public class myftpserver {
     }
 
     //cd changes directory
-    private void handleCd(String[] parts) throws IOException {
+    private void cd_cmd(String[] parts) throws IOException {
         if (parts.length == 1) {
          
             currentDirectory = BASE_DIR;
@@ -248,18 +249,18 @@ public class myftpserver {
 
             if (path.equals("..")) {
                
-                newDir = currentDirectory.getParentFile();
+                newDir = currentDirectory.getParentFile();          //handling parent dir
                 if (newDir == null || !isWithinBaseDir(newDir)) {
                     output.println("Cannot go above base directory");
                     output.println("END_OF_LIST");
                     return;
                 }
-            } else if (path.equals(".")) {
+            } else if (path.equals(".")) { //current dir
             
                 newDir = currentDirectory;
             } else {
                 
-                newDir = new File(currentDirectory, path).getCanonicalFile();
+                newDir = new File(currentDirectory, path).getCanonicalFile(); //abs file path to canonical
                 if (!isWithinBaseDir(newDir)) {
                     output.println("Cannot access directory outside base directory");
                     output.println("END_OF_LIST");
@@ -295,12 +296,8 @@ public class myftpserver {
         }
     }
 
-
-
-
-
     
-    private void handlePwd() { //handles pwd show current directory
+    private void pwd_cmd() { //handles pwd show current directory
         try {
             output.println(currentDirectory.getCanonicalPath());
         } catch (IOException e) {
@@ -309,14 +306,14 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-    private void handleMkdir(String[] parts) { //mkdir makes new directory
+    private void mkdir_cmd(String[] parts) { //mkdir makes new directory
         if (parts.length != 2) {
             output.println("Usage: mkdir <directory>");
             output.println("END_OF_LIST");
             return;
         }
 
-        File newDir = new File(currentDirectory, sanitizeFilename(parts[1]));
+        File newDir = new File(currentDirectory, parts[1].replaceAll("[^a-zA-Z0-9.-]", "_"));
         
         if (!isSubDirectory(newDir, BASE_DIR)) {
             output.println("ERROR: Cannot create directory outside base directory");
@@ -332,7 +329,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-    private void handleDelete(String[] parts) { //delete command which deletes file or directory
+    private void delete_cmd(String[] parts) { //delete command which deletes file or directory
         if (parts.length != 2) {
             output.println("Usage: delete <filename>");
             output.println("END_OF_LIST");
@@ -348,11 +345,7 @@ public class myftpserver {
         }
 
         //if file is there and calls delete command delete it; if not exsisting then print error message
-
-
-
-
-        
+       
         if (file.exists()) {
             if (file.delete()) {
                 output.println("File deleted");
@@ -365,7 +358,7 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-  
+    //presence of sub direcroty
     private boolean isSubDirectory(File child, File parent) {
         try {
             String parentPath = parent.getCanonicalPath() + File.separator;
@@ -376,11 +369,7 @@ public class myftpserver {
         }
     }
 
-   
-    private String sanitizeFilename(String filename) {
-        return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
-    }
-
+    
     public static void main(String[] args) {
         if (args.length != 1) {
             System.out.println("Usage: java myftpserver <port>");

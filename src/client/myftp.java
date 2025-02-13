@@ -14,9 +14,12 @@ public class myftp {
         this.serverPort = port;
     }
 
+    // connection to server
     public void connect() {
         try {
             socket = new Socket(serverAddress, serverPort);
+
+            //input and output data streams to client
             output = new PrintWriter(socket.getOutputStream(), true);
             input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             System.out.println("Connected to server " + serverAddress + ":" + serverPort);
@@ -26,29 +29,29 @@ public class myftp {
         }
     }
 
-    public void handleCommand(String command) {
+    public void cmd_handler(String command) {
         if (command.isEmpty()) return;
 
-        String[] parts = command.split(" ");
+        String[] parts = command.split(" ");  //only take command without spaces
         String cmd = parts[0].toLowerCase();
 
         try {
             switch (cmd) {
                 case "get":
-                    handleGet(command);
+                    get_cmd(command);
                     break;
                 case "put":
-                    handlePut(command);
+                    put_cmd(command);
                     break;
                 case "quit":
                     output.println(command);
-                    readResponse();
+                    read_response();
                     socket.close();
                     System.exit(0);
                     break;
                 default:
                     output.println(command);
-                    readResponse();
+                    read_response();
                     break;
             }
         } catch (IOException e) {
@@ -56,7 +59,7 @@ public class myftp {
         }
     }
 
-    private void handleGet(String command) throws IOException {
+    private void get_cmd(String command) throws IOException {
         String[] parts = command.split(" ");
         if (parts.length != 2) {
             System.out.println("Usage: get <filename>");
@@ -77,6 +80,7 @@ public class myftp {
             
             System.out.println("Receiving file: " + filename + " (" + size + " bytes)");
             
+            //streams for file
             DataInputStream dataInput = new DataInputStream(socket.getInputStream());
             FileOutputStream fos = new FileOutputStream(filename);
             byte[] buffer = new byte[4096];
@@ -102,7 +106,7 @@ public class myftp {
         }
     }
 
-    private void handlePut(String command) throws IOException {
+    private void put_cmd(String command) throws IOException {
         String[] parts = command.split(" ");
         if (parts.length != 2) {
             System.out.println("Usage: put <filename>");
@@ -139,13 +143,13 @@ public class myftp {
             fis.close();
             dataOutput.flush();
             
-            readResponse();
+            read_response();
         } else {
             System.out.println("Server error: " + response);
         }
     }
 
-    private void readResponse() throws IOException {
+    private void read_response() throws IOException {
         String line;
         while ((line = input.readLine()) != null && !line.equals("END_OF_LIST")) {
             System.out.println(line);
@@ -161,6 +165,7 @@ public class myftp {
         String serverAddress = args[0];
         int port = Integer.parseInt(args[1]);
 
+        //get client machine address and port num
         myftp client = new myftp(serverAddress, port);
         client.connect();
 
@@ -168,14 +173,14 @@ public class myftp {
 
         try {
             while (true) {
-                System.out.print("myftp> ");
+                System.out.print("myftp> ");                //continuously have prompt for client terminal
                 String command = consoleReader.readLine();
                 
                 if (command == null || command.trim().isEmpty()) {
                     continue;
                 }
                 
-                client.handleCommand(command);
+                client.cmd_handler(command);
             }
         } catch (IOException e) {
             System.out.println("Error reading command: " + e.getMessage());
