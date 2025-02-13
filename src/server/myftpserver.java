@@ -1,6 +1,6 @@
-// File: myftpserver.java
 import java.io.*;
 import java.net.*;
+import java.nio.file.*;
 
 public class myftpserver {
     private int portNum;
@@ -9,13 +9,17 @@ public class myftpserver {
     private BufferedReader input;
     private PrintWriter output;
     private File currentDirectory;
-    private final String SERVER_DIR = "src/server"; // Base server directory
+    private final File BASE_DIR;
 
     public myftpserver(int portNum) {
         this.portNum = portNum;
-        this.currentDirectory = new File(".").getAbsoluteFile();
-        if (!this.currentDirectory.exists()) {
-            this.currentDirectory.mkdirs();
+        // Use the current working directory as the base directory
+        this.BASE_DIR = new File(System.getProperty("user.dir")).getAbsoluteFile();
+        this.currentDirectory = BASE_DIR;
+        
+        // Create base directory if it doesn't exist
+        if (!this.BASE_DIR.exists()) {
+            this.BASE_DIR.mkdirs();
         }
     }
 
@@ -24,6 +28,7 @@ public class myftpserver {
             serverSocket = new ServerSocket(portNum);
             System.out.println("Server is running...");
             System.out.println("Listening on port: " + portNum);
+            System.out.println("Base directory: " + BASE_DIR.getAbsolutePath());
 
             while (true) {
                 clientSocket = serverSocket.accept();
@@ -46,30 +51,29 @@ public class myftpserver {
                 String[] parts = command.split(" ");
                 String cmd = parts[0].toLowerCase();
 
-               
-                switch (cmd) {    //get statements for the client server
+                switch (cmd) {
                     case "get":
                         handleGet(parts);
                         break;
-                    case "put":     //put statements for the client server
+                    case "put":
                         handlePut(parts);
                         break;
-                    case "ls":      //ls statements which lists the files and directories
+                    case "ls":
                         handleLs();
                         break;
-                    case "cd":    //cd is change directory
+                    case "cd":
                         handleCd(parts);
                         break;
-                    case "pwd":    //prints working directory
+                    case "pwd":
                         handlePwd();
                         break;
-                    case "mkdir":    //makes new directory
+                    case "mkdir":
                         handleMkdir(parts);
                         break;
-                    case "delete":    //deletes the files
+                    case "delete":
                         handleDelete(parts);
                         break;
-                    case "quit":    //quit files or directories
+                    case "quit":
                         output.println("Bye. You quit.");
                         output.println("END_OF_LIST");
                         return;
@@ -96,12 +100,20 @@ public class myftpserver {
     private void handleGet(String[] parts) throws IOException {
         if (parts.length != 2) {
             output.println("ERROR Usage: get <filename>");
+            output.println("END_OF_LIST");
             return;
         }
 
         File file = new File(currentDirectory, parts[1]);
+        if (!isSubDirectory(file, BASE_DIR)) {
+            output.println("ERROR Access denied: File outside base directory");
+            output.println("END_OF_LIST");
+            return;
+        }
+
         if (!file.exists() || !file.isFile()) {
             output.println("ERROR File not found: " + parts[1]);
+            output.println("END_OF_LIST");
             return;
         }
 
@@ -109,9 +121,9 @@ public class myftpserver {
             output.println("SIZE " + file.length());
             output.flush();
             
-            DataOutputStream dataOutput = new DataOutputStream(clientSocket.getOutputStream());
-            FileInputStream fis = new FileInputStream(file);
-            byte[] buffer = new byte[4096];
+            BufferedOutputStream dataOutput = new BufferedOutputStream(clientSocket.getOutputStream());
+            BufferedInputStream fis = new BufferedInputStream(new FileInputStream(file));
+            byte[] buffer = new byte[8192];
             int bytesRead;
 
             while ((bytesRead = fis.read(buffer)) != -1) {
@@ -121,17 +133,20 @@ public class myftpserver {
             dataOutput.flush();
             fis.close();
             
+            // Wait a bit before sending END_OF_LIST to ensure data is transferred
+            Thread.sleep(100);
             output.println("END_OF_LIST");
             output.flush();
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             output.println("ERROR Failed to send file: " + e.getMessage());
+            output.println("END_OF_LIST");
         }
     }
 
-        //handles the put using file
     private void handlePut(String[] parts) throws IOException {
-        if (parts.length != 3) {  // Command, filename, and size
+        if (parts.length != 3) {
             output.println("ERROR Usage: put <filename> <size>");
+            output.println("END_OF_LIST");
             return;
         }
 
@@ -141,32 +156,41 @@ public class myftpserver {
             size = Long.parseLong(parts[2]);
         } catch (NumberFormatException e) {
             output.println("ERROR Invalid file size");
+            output.println("END_OF_LIST");
             return;
         }
 
-        // Ensure we're saving to the server directory
-        File serverDir = new File(SERVER_DIR);
-        if (!serverDir.exists()) {
-            serverDir.mkdirs();
+        // Sanitize the filename and create full path
+        filename = sanitizeFilename(filename);
+        File file = new File(currentDirectory, filename);
+
+        // Check if the target location is within base directory
+        if (!isSubDirectory(file, BASE_DIR)) {
+            output.println("ERROR Access denied: Cannot write outside base directory");
+            output.println("END_OF_LIST");
+            return;
         }
-        
-        // Create file in the server directory
-        File file = new File(serverDir, filename);
-        
+
         try {
             output.println("READY");
             output.flush();
-            
-            DataInputStream dataInput = new DataInputStream(clientSocket.getInputStream());
-            FileOutputStream fos = new FileOutputStream(file);
-            byte[] buffer = new byte[4096];
+
+            BufferedInputStream dataInput = new BufferedInputStream(clientSocket.getInputStream());
+            BufferedOutputStream fos = new BufferedOutputStream(new FileOutputStream(file));
+            byte[] buffer = new byte[8192];
             long received = 0;
             
             while (received < size) {
                 int bytesToRead = (int) Math.min(buffer.length, size - received);
                 int bytesRead = dataInput.read(buffer, 0, bytesToRead);
                 
-                if (bytesRead == -1) break;
+                if (bytesRead == -1) {
+                    fos.close();
+                    file.delete();
+                    output.println("ERROR File transfer incomplete");
+                    output.println("END_OF_LIST");
+                    return;
+                }
                 
                 fos.write(buffer, 0, bytesRead);
                 received += bytesRead;
@@ -174,7 +198,7 @@ public class myftpserver {
             
             fos.close();
             
-            output.println("File uploaded successfully to server directory");
+            output.println("File uploaded successfully");
             output.println("END_OF_LIST");
         } catch (IOException e) {
             output.println("ERROR Failed to receive file: " + e.getMessage());
@@ -185,55 +209,67 @@ public class myftpserver {
         }
     }
 
-//ls using the file
     private void handleLs() {
-        File[] files = currentDirectory.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                output.println(file.getName() + (file.isDirectory() ? "/" : ""));
-            }
+        try {
+            Files.list(currentDirectory.toPath())
+                .forEach(path -> {
+                    File file = path.toFile();
+                    output.println(file.getName() + (file.isDirectory() ? "/" : ""));
+                });
+        } catch (IOException e) {
+            output.println("ERROR: Unable to list directory");
         }
         output.println("END_OF_LIST");
     }
 
-        //cd using the file
     private void handleCd(String[] parts) {
         if (parts.length != 2) {
             output.println("Usage: cd <directory>");
             output.println("END_OF_LIST");
             return;
         }
-    
-        String path = parts[1];
-        File newDir;
-    
-        if (path.equals("..")) {
-            newDir = currentDirectory.getParentFile();
-            if (newDir == null) {
-                output.println("Already at the root directory.");
+
+        try {
+            File newDir;
+            if (parts[1].equals("..")) {
+                newDir = currentDirectory.getCanonicalFile().getParentFile();
+            } else if (parts[1].equals(".")) {
+                newDir = currentDirectory;
+            } else {
+                newDir = new File(currentDirectory, parts[1]).getCanonicalFile();
+            }
+
+            // Check if the new directory exists and is within base directory
+            if (!newDir.exists() || !newDir.isDirectory()) {
+                output.println("Directory does not exist");
                 output.println("END_OF_LIST");
                 return;
             }
-        } else {
-            newDir = new File(currentDirectory, path);
-        }
-    
-        if (newDir.exists() && newDir.isDirectory()) {
+
+            if (!isSubDirectory(newDir, BASE_DIR)) {
+                output.println("Access denied: Cannot navigate above base directory");
+                output.println("END_OF_LIST");
+                return;
+            }
+
             currentDirectory = newDir;
-            output.println("Changed to " + currentDirectory.getAbsolutePath());
-        } else {
-            output.println("Not a directory or does not exist.");
+            output.println("Changed to: " + currentDirectory.getCanonicalPath());
+            output.println("END_OF_LIST");
+        } catch (IOException e) {
+            output.println("ERROR: Invalid directory path");
+            output.println("END_OF_LIST");
         }
-    
-        output.println("END_OF_LIST");
     }
 
     private void handlePwd() {
-        output.println(currentDirectory.getAbsolutePath());
+        try {
+            output.println(currentDirectory.getCanonicalPath());
+        } catch (IOException e) {
+            output.println("ERROR: Unable to determine current directory");
+        }
         output.println("END_OF_LIST");
     }
 
-        //mkdir using the file
     private void handleMkdir(String[] parts) {
         if (parts.length != 2) {
             output.println("Usage: mkdir <directory>");
@@ -241,7 +277,14 @@ public class myftpserver {
             return;
         }
 
-        File newDir = new File(currentDirectory, parts[1]);
+        File newDir = new File(currentDirectory, sanitizeFilename(parts[1]));
+        
+        if (!isSubDirectory(newDir, BASE_DIR)) {
+            output.println("ERROR: Cannot create directory outside base directory");
+            output.println("END_OF_LIST");
+            return;
+        }
+
         if (newDir.mkdir()) {
             output.println("Directory created");
         } else {
@@ -250,7 +293,6 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
-        //delete using the file
     private void handleDelete(String[] parts) {
         if (parts.length != 2) {
             output.println("Usage: delete <filename>");
@@ -259,6 +301,13 @@ public class myftpserver {
         }
 
         File file = new File(currentDirectory, parts[1]);
+        
+        if (!isSubDirectory(file, BASE_DIR)) {
+            output.println("ERROR: Cannot delete files outside base directory");
+            output.println("END_OF_LIST");
+            return;
+        }
+
         if (file.exists()) {
             if (file.delete()) {
                 output.println("File deleted");
@@ -271,14 +320,34 @@ public class myftpserver {
         output.println("END_OF_LIST");
     }
 
+    // Helper method to check if a path is within the base directory
+    private boolean isSubDirectory(File child, File parent) {
+        try {
+            String parentPath = parent.getCanonicalPath() + File.separator;
+            String childPath = child.getCanonicalPath();
+            return childPath.startsWith(parentPath);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    // Helper method to sanitize filenames
+    private String sanitizeFilename(String filename) {
+        return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
+    }
+
     public static void main(String[] args) {
         if (args.length != 1) {
             System.out.println("Usage: java myftpserver <port>");
             return;
         }
 
-        int port = Integer.parseInt(args[0]);
-        myftpserver server = new myftpserver(port);
-        server.run();
+        try {
+            int port = Integer.parseInt(args[0]);
+            myftpserver server = new myftpserver(port);
+            server.run();
+        } catch (NumberFormatException e) {
+            System.out.println("Error: Port must be a valid number");
+        }
     }
 }
