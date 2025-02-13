@@ -231,23 +231,32 @@ public class myftpserver {
 
         try {
             File newDir;
-            if (parts[1].equals("..")) {
-                newDir = currentDirectory.getCanonicalFile().getParentFile();
-            } else if (parts[1].equals(".")) {
+            String path = parts[1];
+
+            if (path.equals("..")) {
+                // Going up one directory
+                newDir = currentDirectory.getParentFile();
+                if (newDir == null || !isWithinBaseDir(newDir)) {
+                    output.println("Cannot go above base directory");
+                    output.println("END_OF_LIST");
+                    return;
+                }
+            } else if (path.equals(".")) {
+                // Stay in current directory
                 newDir = currentDirectory;
             } else {
-                newDir = new File(currentDirectory, parts[1]).getCanonicalFile();
+                // Change to specified directory
+                newDir = new File(currentDirectory, path).getCanonicalFile();
+                if (!isWithinBaseDir(newDir)) {
+                    output.println("Cannot access directory outside base directory");
+                    output.println("END_OF_LIST");
+                    return;
+                }
             }
 
-            // Check if the new directory exists and is within base directory
+            // Check if directory exists and is actually a directory
             if (!newDir.exists() || !newDir.isDirectory()) {
                 output.println("Directory does not exist");
-                output.println("END_OF_LIST");
-                return;
-            }
-
-            if (!isSubDirectory(newDir, BASE_DIR)) {
-                output.println("Access denied: Cannot navigate above base directory");
                 output.println("END_OF_LIST");
                 return;
             }
@@ -255,9 +264,20 @@ public class myftpserver {
             currentDirectory = newDir;
             output.println("Changed to: " + currentDirectory.getCanonicalPath());
             output.println("END_OF_LIST");
+
         } catch (IOException e) {
             output.println("ERROR: Invalid directory path");
             output.println("END_OF_LIST");
+        }
+    }
+
+    private boolean isWithinBaseDir(File dir) {
+        try {
+            String basePath = BASE_DIR.getCanonicalPath();
+            String targetPath = dir.getCanonicalPath();
+            return targetPath.equals(basePath) || targetPath.startsWith(basePath + File.separator);
+        } catch (IOException e) {
+            return false;
         }
     }
 
